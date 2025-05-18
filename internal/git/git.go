@@ -644,6 +644,25 @@ func (m *Manager) UpdateArtifactsRepo(repoName, pkgName, version string) error {
 		}
 	}
 
+	// 合并提交配置
+	commitConfig := m.mergeCommitConfig(m.config.CommitConfig, m.config.ArtifactsRepo.CommitConfig)
+
+	// 设置 Git 用户信息
+	if commitConfig.UserName != "" {
+		configNameCmd := exec.Command("git", "config", "user.name", commitConfig.UserName)
+		configNameCmd.Dir = repoPath
+		if output, err := configNameCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to set git user.name: %w, output: %s", err, string(output))
+		}
+	}
+	if commitConfig.UserEmail != "" {
+		configEmailCmd := exec.Command("git", "config", "user.email", commitConfig.UserEmail)
+		configEmailCmd.Dir = repoPath
+		if output, err := configEmailCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to set git user.email: %w, output: %s", err, string(output))
+		}
+	}
+
 	// 创建或切换到 feature 分支
 	featureBranch := fmt.Sprintf("feature-%s", repoName)
 
@@ -748,25 +767,6 @@ func (m *Manager) UpdateArtifactsRepo(repoName, pkgName, version string) error {
 
 	// 只有在有更改时才提交
 	if len(strings.TrimSpace(string(statusOutput))) > 0 {
-		// 合并提交配置
-		commitConfig := m.mergeCommitConfig(m.config.CommitConfig, m.config.ArtifactsRepo.CommitConfig)
-
-		// 设置 Git 用户信息
-		if commitConfig.UserName != "" {
-			configNameCmd := exec.Command("git", "config", "user.name", commitConfig.UserName)
-			configNameCmd.Dir = repoPath
-			if output, err := configNameCmd.CombinedOutput(); err != nil {
-				return fmt.Errorf("failed to set git user.name: %w, output: %s", err, string(output))
-			}
-		}
-		if commitConfig.UserEmail != "" {
-			configEmailCmd := exec.Command("git", "config", "user.email", commitConfig.UserEmail)
-			configEmailCmd.Dir = repoPath
-			if output, err := configEmailCmd.CombinedOutput(); err != nil {
-				return fmt.Errorf("failed to set git user.email: %w, output: %s", err, string(output))
-			}
-		}
-
 		// 提交更改
 		commitMessage := commitConfig.Message
 		if commitMessage == "" {
@@ -816,7 +816,7 @@ func (m *Manager) UpdateArtifactsRepo(repoName, pkgName, version string) error {
 		}
 
 		// 拉取目标分支最新代码
-		pullTargetCmd := exec.Command("git", "pull", "origin", targetBranch)
+		pullTargetCmd := exec.Command("git", "pull", "--rebase", "origin", targetBranch)
 		pullTargetCmd.Dir = repoPath
 		m.setupCredentials(m.config.ArtifactsRepo, pullTargetCmd)
 		if output, err := pullTargetCmd.CombinedOutput(); err != nil {
