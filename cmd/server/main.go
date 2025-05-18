@@ -105,8 +105,28 @@ func main() {
 	// Load configuration
 	cfg, err := config.LoadConfig(*configFile)
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		log.Printf("Warning: Failed to load configuration file: %v", err)
+		// 如果配置文件加载失败，使用默认配置
+		cfg = &config.Config{
+			Server: config.ServerConfig{
+				Port: 8080, // 默认端口
+			},
+			Git: config.GitConfig{
+				MainRepo: &config.Repository{
+					Branch: "main",
+				},
+				ArtifactsRepo: &config.ArtifactsRepo{
+					Branch: "main",
+				},
+			},
+			Schedule: config.ScheduleConfig{
+				CheckInterval: 10 * time.Minute,
+			},
+		}
 	}
+
+	// 确保环境变量覆盖配置文件
+	config.OverrideWithEnv(cfg)
 
 	// Initialize Git manager
 	gitManager, err := git.NewManager(&cfg.Git)

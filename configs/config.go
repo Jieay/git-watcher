@@ -261,6 +261,9 @@ func LoadConfig(configPath string) (*Config, error) {
 		config.Git.MainRepo.Branch = "main"
 	}
 
+	// 使用环境变量覆盖配置
+	OverrideWithEnv(&config)
+
 	// 验证配置
 	if err := validateConfig(&config); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
@@ -269,8 +272,8 @@ func LoadConfig(configPath string) (*Config, error) {
 	return &config, nil
 }
 
-// overrideWithEnv overrides configuration values with environment variables
-func overrideWithEnv(config *Config) {
+// OverrideWithEnv overrides configuration values with environment variables
+func OverrideWithEnv(config *Config) {
 	// Server config
 	if port, exists := getEnvInt(EnvServerPort); exists {
 		config.Server.Port = port
