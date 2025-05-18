@@ -1,0 +1,56 @@
+{
+  "server": {
+    "port": 8080
+  },
+  "git": {
+    "mainRepo": {
+      "url": "https://github.com/example/main-repo.git",
+      "branch": "main",
+      "directory": "main-repo",
+      "auth": {
+        "type": "basic",
+        "username": "your-username",
+        "password": "your-password"
+      },
+      "commitConfig": {
+        "userName": "Git Watcher",
+        "userEmail": "git-watcher@example.com",
+        "message": "Update submodules [Git Watcher Auto-Commit]"
+      }
+    },
+    "workingDir": "./repos",
+    "useSubmodules": true,
+    "branches": ["main", "develop", "release"],
+    "autoCommit": true,
+    "commitConfig": {
+      "userName": "Git Watcher",
+      "userEmail": "git-watcher@example.com",
+      "message": "Update submodules [Git Watcher Auto-Commit]"
+    },
+    "artifactsRepo": {
+      "url": "https://github.com/example/artifacts-repo.git",
+      "branch": "main",
+      "directory": "artifacts-repo",
+      "auth": {
+        "type": "basic",
+        "username": "your-username",
+        "password": "your-password"
+      },
+      "useMainAuth": true,
+      "useMainCommit": true,
+      "commitConfig": {
+        "userName": "Artifacts Updater",
+        "userEmail": "artifacts-updater@example.com",
+        "message": "Update artifacts [Auto-Commit]"
+      }
+    }
+  },
+  "webhook": {
+    "callbackUrl": "https://example.com/webhook",
+    "secret": "your-webhook-secret",
+    "method": "POST"
+  },
+  "schedule": {
+    "checkInterval": "10m"
+  }
+}

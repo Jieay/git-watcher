@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  git-watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: git-watcher
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount custom config file if needed (optional when using environment variables)
+      - ./configs/config.json:/app/configs/config.json
+      # Persist repository data
+      - git-repos:/app/repos
+      # Mount SSH keys if using SSH authentication
+      # - ~/.ssh/id_rsa:/app/ssh/id_rsa:ro
+    environment:
+      # Server configuration
+      - GIT_WATCHER_SERVER_PORT=8080
+      
+      # Git repository configuration
+      - GIT_WATCHER_MAIN_REPO_URL=https://github.com/example/main-repo.git
+      - GIT_WATCHER_MAIN_REPO_BRANCH=main
+      - GIT_WATCHER_MAIN_REPO_DIRECTORY=main-repo
+      - GIT_WATCHER_WORKING_DIR=/app/repos
+      - GIT_WATCHER_USE_SUBMODULES=true
+      - GIT_WATCHER_BRANCHES=main,develop,release
+      
+      # Authentication (choose one: basic auth or SSH)
+      # Basic auth
+      - GIT_WATCHER_AUTH_TYPE=basic
+      - GIT_WATCHER_AUTH_USERNAME=your-username
+      - GIT_WATCHER_AUTH_PASSWORD=your-password
+      
+      # SSH auth (uncomment if using SSH)
+      # - GIT_WATCHER_AUTH_TYPE=ssh
+      # - GIT_WATCHER_AUTH_SSH_KEY_PATH=/app/ssh/id_rsa
+      
+      # Webhook configuration
+      - GIT_WATCHER_WEBHOOK_CALLBACK_URL=https://example.com/webhook
+      - GIT_WATCHER_WEBHOOK_SECRET=your-webhook-secret
+      - GIT_WATCHER_WEBHOOK_METHOD=POST
+      
+      # Schedule configuration
+      - GIT_WATCHER_CHECK_INTERVAL=10m
+      
+      # Timezone
+      - TZ=Asia/Shanghai
+
+volumes:
+  git-repos:
+    # Named volume to persist Git repositories between container restarts 
