@@ -580,27 +580,38 @@ func (m *Manager) UpdateArtifactsRepo(repoName, pkgName, version string) error {
 		}
 	}
 
-	// 拉取最新代码
-	pullCmd := exec.Command("git", "pull", "origin", m.config.ArtifactsRepo.Branch)
-	pullCmd.Dir = repoPath
-	if _, err := pullCmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git pull failed: %w", err)
-	}
-
 	// 创建或切换到 feature 分支
 	featureBranch := fmt.Sprintf("feature-%s", repoName)
-	checkoutCmd := exec.Command("git", "checkout", "-b", featureBranch)
-	checkoutCmd.Dir = repoPath
-	if _, err := checkoutCmd.CombinedOutput(); err != nil {
-		// 如果分支已存在，则切换到该分支
-		checkoutCmd = exec.Command("git", "checkout", featureBranch)
+
+	// 检查远程分支是否存在
+	lsRemoteCmd := exec.Command("git", "ls-remote", "--heads", "origin", featureBranch)
+	lsRemoteCmd.Dir = repoPath
+	m.setupCredentials(m.config.ArtifactsRepo, lsRemoteCmd)
+	lsRemoteOutput, err := lsRemoteCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to check remote branch: %w, output: %s", err, string(lsRemoteOutput))
+	}
+
+	// 如果远程分支存在，则拉取
+	if len(strings.TrimSpace(string(lsRemoteOutput))) > 0 {
+		// 切换到 feature 分支
+		checkoutCmd := exec.Command("git", "checkout", featureBranch)
+		checkoutCmd.Dir = repoPath
+		if _, err := checkoutCmd.CombinedOutput(); err != nil {
+			// 如果本地分支不存在，则创建并拉取
+			checkoutCmd = exec.Command("git", "checkout", "-b", featureBranch, "origin/"+featureBranch)
+			checkoutCmd.Dir = repoPath
+			if output, err := checkoutCmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("failed to checkout feature branch: %w, output: %s", err, string(output))
+			}
+		}
+	} else {
+		// 如果远程分支不存在，则创建新分支
+		checkoutCmd := exec.Command("git", "checkout", "-b", featureBranch)
 		checkoutCmd.Dir = repoPath
 		if output, err := checkoutCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to checkout feature branch: %w, output: %s", err, string(output))
+			return fmt.Errorf("failed to create feature branch: %w, output: %s", err, string(output))
 		}
-		fmt.Printf("Checked out existing feature branch: %s\n", featureBranch)
-	} else {
-		fmt.Printf("Created new feature branch: %s\n", featureBranch)
 	}
 
 	// 创建或更新 {repoName}.jsonnet 文件
@@ -712,8 +723,8 @@ func (m *Manager) UpdateArtifactsRepo(repoName, pkgName, version string) error {
 			return fmt.Errorf("git commit failed: %w, output: %s", err, string(output))
 		}
 
-		// 推送到远程仓库
-		pushCmd := exec.Command("git", "push", "origin", featureBranch)
+		// 强制推送到远程仓库
+		pushCmd := exec.Command("git", "push", "-f", "origin", featureBranch)
 		pushCmd.Dir = repoPath
 		m.setupCredentials(m.config.ArtifactsRepo, pushCmd)
 		if output, err := pushCmd.CombinedOutput(); err != nil {
@@ -725,6 +736,7 @@ func (m *Manager) UpdateArtifactsRepo(repoName, pkgName, version string) error {
 		if targetBranch == "" {
 			targetBranch = m.config.ArtifactsRepo.Branch // 如果未配置 autoBranchName，则使用默认分支
 		}
+
 		// 切换到目标分支
 		checkoutTargetCmd := exec.Command("git", "checkout", targetBranch)
 		checkoutTargetCmd.Dir = repoPath
@@ -732,18 +744,31 @@ func (m *Manager) UpdateArtifactsRepo(repoName, pkgName, version string) error {
 			return fmt.Errorf("failed to checkout target branch %s: %w, output: %s", targetBranch, err, string(output))
 		}
 
+		// 清理未合并的文件
+		cleanupCmd := exec.Command("git", "reset", "--hard", "HEAD")
+		cleanupCmd.Dir = repoPath
+		if output, err := cleanupCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to cleanup unmerged files: %w, output: %s", err, string(output))
+		}
+
 		// 拉取目标分支最新代码
 		pullTargetCmd := exec.Command("git", "pull", "origin", targetBranch)
 		pullTargetCmd.Dir = repoPath
+		m.setupCredentials(m.config.ArtifactsRepo, pullTargetCmd)
 		if output, err := pullTargetCmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to pull target branch %s: %w, output: %s", targetBranch, err, string(output))
 		}
 
 		// 合并 feature 分支
-		mergeCmd := exec.Command("git", "merge", featureBranch)
+		mergeCmd := exec.Command("git", "merge", "--no-ff", "--strategy-option=theirs", featureBranch)
 		mergeCmd.Dir = repoPath
-		if output, err := mergeCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to merge branch %s into %s: %w, output: %s", featureBranch, targetBranch, err, string(output))
+		if _, err := mergeCmd.CombinedOutput(); err != nil {
+			// 如果合并失败，尝试使用 --strategy-option=theirs 选项
+			mergeCmd = exec.Command("git", "merge", "--no-ff", "--strategy-option=theirs", featureBranch)
+			mergeCmd.Dir = repoPath
+			if output, err := mergeCmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("failed to merge branch %s into %s: %w, output: %s", featureBranch, targetBranch, err, string(output))
+			}
 		}
 
 		// 推送合并后的更改到远程

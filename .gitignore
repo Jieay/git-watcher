@@ -41,6 +41,7 @@ config.local.json
 *.pem
 id_rsa
 id_rsa.pub
+env_set.sh
 
 # Temporary files
 tmp/
