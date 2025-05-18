@@ -386,12 +386,33 @@ func (m *Manager) setupCredentials(repo config.RepositoryInterface, cmd *exec.Cm
 	switch repo.GetAuth().Type {
 	case "basic":
 		if repo.GetAuth().Username != "" && repo.GetAuth().Password != "" {
-			// For HTTPS with basic auth, use credential helper
+			// 设置 Git 凭证
 			cmd.Env = append(os.Environ(),
 				"GIT_ASKPASS=echo",
 				fmt.Sprintf("GIT_USERNAME=%s", repo.GetAuth().Username),
 				fmt.Sprintf("GIT_PASSWORD=%s", repo.GetAuth().Password),
 			)
+
+			// 配置 Git 使用凭证
+			configCmd := exec.Command("git", "config", "--global", "credential.helper", "store")
+			configCmd.Env = cmd.Env
+			configCmd.Run() // 忽略错误，因为可能已经配置过
+
+			// 写入凭证到临时文件
+			credentialContent := fmt.Sprintf("https://%s:%s@%s\n",
+				repo.GetAuth().Username,
+				repo.GetAuth().Password,
+				strings.TrimPrefix(repo.GetURL(), "https://"))
+
+			homeDir, err := os.UserHomeDir()
+			if err == nil {
+				gitConfigDir := filepath.Join(homeDir, ".git")
+				if err := os.MkdirAll(gitConfigDir, 0755); err == nil {
+					credentialFile := filepath.Join(gitConfigDir, "credentials")
+					os.WriteFile(credentialFile, []byte(credentialContent), 0600)
+					fmt.Printf("Git authentication configured successfully for user: %s\n", repo.GetAuth().Username)
+				}
+			}
 		}
 	case "ssh":
 		if repo.GetAuth().SSHKeyPath != "" {
