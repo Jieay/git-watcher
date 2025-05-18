@@ -441,6 +441,29 @@ func (m *Manager) setupCredentials(repo config.RepositoryInterface, cmd *exec.Cm
 func (m *Manager) cloneRepo(repo config.RepositoryInterface) error {
 	repoPath := filepath.Join(m.config.WorkingDir, repo.GetDirectory())
 
+	// 确保认证信息已配置
+	if repo.GetAuth().Type == "basic" && repo.GetAuth().Username != "" && repo.GetAuth().Password != "" {
+		// 配置 Git 使用凭证
+		configCmd := exec.Command("git", "config", "--global", "credential.helper", "store")
+		configCmd.Run() // 忽略错误，因为可能已经配置过
+
+		// 写入凭证到临时文件
+		credentialContent := fmt.Sprintf("https://%s:%s@%s\n",
+			repo.GetAuth().Username,
+			repo.GetAuth().Password,
+			strings.TrimPrefix(repo.GetURL(), "https://"))
+
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			gitConfigDir := filepath.Join(homeDir, ".git")
+			if err := os.MkdirAll(gitConfigDir, 0755); err == nil {
+				credentialFile := filepath.Join(gitConfigDir, "credentials")
+				os.WriteFile(credentialFile, []byte(credentialContent), 0600)
+				fmt.Printf("Git authentication configured successfully for user: %s\n", repo.GetAuth().Username)
+			}
+		}
+	}
+
 	args := []string{"clone", "--branch", repo.GetBranch()}
 
 	// Handle authentication for SSH URLs
