@@ -588,34 +588,15 @@ func (m *Manager) GetConfig() *config.GitConfig {
 
 // mergeCommitConfig 合并主仓库和制品仓库的提交配置，制品仓库的配置优先级更高
 func (m *Manager) mergeCommitConfig(mainConfig, artifactsConfig config.CommitConfig) config.CommitConfig {
-	// 如果配置了使用主仓库提交信息，则从主仓库配置开始
-	merged := mainConfig
-
-	// 如果制品仓库配置了使用主仓库提交信息
+	// 如果配置了使用主仓库提交信息，则完全使用主仓库的配置
 	if m.config.ArtifactsRepo.UseMainCommit {
-		fmt.Printf("Using main repository commit config as base for artifacts repository\n")
-	} else {
-		// 如果未配置使用主仓库提交信息，则使用制品仓库的配置
-		merged = artifactsConfig
-		fmt.Printf("Using artifacts repository commit config\n")
-		return merged
+		fmt.Printf("Using main repository commit config for artifacts repository\n")
+		return mainConfig
 	}
 
-	// 如果制品仓库配置中有值，则覆盖主仓库的配置
-	if artifactsConfig.UserName != "" {
-		merged.UserName = artifactsConfig.UserName
-		fmt.Printf("Overriding commit username with artifacts config: %s\n", artifactsConfig.UserName)
-	}
-	if artifactsConfig.UserEmail != "" {
-		merged.UserEmail = artifactsConfig.UserEmail
-		fmt.Printf("Overriding commit email with artifacts config: %s\n", artifactsConfig.UserEmail)
-	}
-	if artifactsConfig.Message != "" {
-		merged.Message = artifactsConfig.Message
-		fmt.Printf("Overriding commit message with artifacts config: %s\n", artifactsConfig.Message)
-	}
-
-	return merged
+	// 如果未配置使用主仓库提交信息，则使用制品仓库的配置
+	fmt.Printf("Using artifacts repository commit config\n")
+	return artifactsConfig
 }
 
 // UpdateArtifactsRepo 更新制品仓库
