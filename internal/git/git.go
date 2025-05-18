@@ -781,6 +781,22 @@ func (m *Manager) UpdateArtifactsRepo(repoName, pkgName, version string) error {
 			version,
 		)
 
+		// 在提交前重新设置用户信息
+		if commitConfig.UserName != "" {
+			configNameCmd := exec.Command("git", "config", "user.name", commitConfig.UserName)
+			configNameCmd.Dir = repoPath
+			if output, err := configNameCmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("failed to set git user.name: %w, output: %s", err, string(output))
+			}
+		}
+		if commitConfig.UserEmail != "" {
+			configEmailCmd := exec.Command("git", "config", "user.email", commitConfig.UserEmail)
+			configEmailCmd.Dir = repoPath
+			if output, err := configEmailCmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("failed to set git user.email: %w, output: %s", err, string(output))
+			}
+		}
+
 		commitCmd := exec.Command("git", "commit", "-m", commitMessage)
 		commitCmd.Dir = repoPath
 		if output, err := commitCmd.CombinedOutput(); err != nil {
@@ -821,6 +837,22 @@ func (m *Manager) UpdateArtifactsRepo(repoName, pkgName, version string) error {
 		m.setupCredentials(m.config.ArtifactsRepo, pullTargetCmd)
 		if output, err := pullTargetCmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("failed to pull target branch %s: %w, output: %s", targetBranch, err, string(output))
+		}
+
+		// 在合并前重新设置用户信息
+		if commitConfig.UserName != "" {
+			configNameCmd := exec.Command("git", "config", "user.name", commitConfig.UserName)
+			configNameCmd.Dir = repoPath
+			if output, err := configNameCmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("failed to set git user.name: %w, output: %s", err, string(output))
+			}
+		}
+		if commitConfig.UserEmail != "" {
+			configEmailCmd := exec.Command("git", "config", "user.email", commitConfig.UserEmail)
+			configEmailCmd.Dir = repoPath
+			if output, err := configEmailCmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("failed to set git user.email: %w, output: %s", err, string(output))
+			}
 		}
 
 		// 合并 feature 分支
