@@ -549,8 +549,8 @@ func (m *Manager) pullRepo(repo config.RepositoryInterface) error {
 		return fmt.Errorf("git checkout failed: %w, output: %s", err, string(output))
 	}
 
-	// Pull the changes
-	pullCmd := exec.Command("git", "pull", "origin", repo.GetBranch())
+	// Pull the changes with --rebase option
+	pullCmd := exec.Command("git", "pull", "--rebase", "origin", repo.GetBranch())
 	pullCmd.Dir = repoPath
 	m.setupCredentials(repo, pullCmd)
 

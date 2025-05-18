@@ -320,7 +320,7 @@ func OverrideWithEnv(config *Config) {
 	if callbackURL := os.Getenv(EnvWebhookCallbackURL); callbackURL != "" {
 		config.Webhook.CallbackURL = callbackURL
 	}
-	if secret := os.Getenv(EnvWebhookSecret); secret != "" {
+	if secret, exists := os.LookupEnv(EnvWebhookSecret); exists {
 		config.Webhook.Secret = secret
 	}
 	if method := os.Getenv(EnvWebhookMethod); method != "" {
