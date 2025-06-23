@@ -53,6 +53,7 @@ type WebhookTriggerRequest struct {
 	Event     string `json:"event"`
 	Branch    string `json:"branch"`    // Optional branch to check
 	Reference string `json:"reference"` // Git reference (alternative to branch)
+	Ref       string `json:"ref"`       // Git reference (alternative to branch and reference)
 }
 
 // SendNotification sends a webhook notification about repository updates
@@ -134,14 +135,33 @@ func (c *Client) ValidateWebhook(r *http.Request) (WebhookTriggerRequest, error)
 		}
 	}
 
+	// Log original payload fields
+	fmt.Printf("Webhook payload before processing - Event: %s, Branch: %s, Reference: %s, Ref: %s\n",
+		payload.Event, payload.Branch, payload.Reference, payload.Ref)
+
 	// If reference is provided but branch is not, extract branch from reference
 	if payload.Branch == "" && payload.Reference != "" {
 		// Extract branch name from a git reference like "refs/heads/main"
 		parts := strings.Split(payload.Reference, "/")
 		if len(parts) >= 3 && parts[0] == "refs" && parts[1] == "heads" {
 			payload.Branch = parts[2]
+			fmt.Printf("Extracted branch '%s' from reference '%s'\n", payload.Branch, payload.Reference)
 		}
 	}
+
+	// If ref is provided but branch is still not set, extract branch from ref
+	if payload.Branch == "" && payload.Ref != "" {
+		// Extract branch name from a git reference like "refs/heads/main"
+		parts := strings.Split(payload.Ref, "/")
+		if len(parts) >= 3 && parts[0] == "refs" && parts[1] == "heads" {
+			payload.Branch = parts[2]
+			fmt.Printf("Extracted branch '%s' from ref '%s'\n", payload.Branch, payload.Ref)
+		}
+	}
+
+	// Log final payload fields
+	fmt.Printf("Webhook payload after processing - Event: %s, Branch: %s, Reference: %s, Ref: %s\n",
+		payload.Event, payload.Branch, payload.Reference, payload.Ref)
 
 	return payload, nil
 }

@@ -134,7 +134,20 @@ func (m *Manager) checkAndUpdateSubmodules() (bool, error) {
 
 	fmt.Printf("Found %d submodules: %v\n", len(submodules), submodules)
 
-	// Check status of all submodules
+	// Record original submodule commit hashes before update
+	originalHashes := make(map[string]string)
+	for _, submodule := range submodules {
+		hashCmd := exec.Command("git", "rev-parse", "HEAD")
+		hashCmd.Dir = filepath.Join(repoPath, submodule)
+		if hashOutput, err := hashCmd.Output(); err == nil {
+			originalHashes[submodule] = strings.TrimSpace(string(hashOutput))
+			fmt.Printf("Original %s hash: %s\n", submodule, originalHashes[submodule])
+		} else {
+			fmt.Printf("Warning: Could not get original hash for submodule %s: %v\n", submodule, err)
+		}
+	}
+
+	// Check status of all submodules before update
 	statusCmd := exec.Command("git", "submodule", "status")
 	statusCmd.Dir = repoPath
 	statusOutput, err := statusCmd.CombinedOutput()
@@ -142,10 +155,24 @@ func (m *Manager) checkAndUpdateSubmodules() (bool, error) {
 		return false, fmt.Errorf("failed to check submodule status: %w", err)
 	}
 
-	fmt.Printf("Submodule status:\n%s\n", string(statusOutput))
+	fmt.Printf("Submodule status before update:\n%s\n", string(statusOutput))
+
+	// Check main repository status before submodule updates
+	mainStatusBeforeCmd := exec.Command("git", "status", "--porcelain")
+	mainStatusBeforeCmd.Dir = repoPath
+	mainStatusBeforeOutput, err := mainStatusBeforeCmd.Output()
+	if err != nil {
+		return false, fmt.Errorf("failed to check main repository status before update: %w", err)
+	}
+
+	fmt.Printf("Main repository status before submodule updates:\n%s\n", string(mainStatusBeforeOutput))
 
 	var anyUpdated bool
+	updatedSubmodules := make([]string, 0)
+
 	for _, submodule := range submodules {
+		fmt.Printf("Checking submodule %s for updates...\n", submodule)
+
 		// Check if submodule needs updating
 		updateCmd := exec.Command("git", "submodule", "update", "--recursive", "--remote", submodule)
 		updateCmd.Dir = repoPath
@@ -158,6 +185,8 @@ func (m *Manager) checkAndUpdateSubmodules() (bool, error) {
 			continue
 		}
 
+		fmt.Printf("Submodule %s update output: %s\n", submodule, string(output))
+
 		// Get the new commit hash after update
 		hashCmd := exec.Command("git", "rev-parse", "HEAD")
 		hashCmd.Dir = filepath.Join(repoPath, submodule)
@@ -167,20 +196,40 @@ func (m *Manager) checkAndUpdateSubmodules() (bool, error) {
 			continue
 		}
 
-		commitHash := strings.TrimSpace(string(hashOutput))
-		fmt.Printf("Updated submodule %s to commit %s\n", submodule, commitHash)
+		newHash := strings.TrimSpace(string(hashOutput))
+		originalHash := originalHashes[submodule]
+
+		if newHash != originalHash {
+			fmt.Printf("Updated submodule %s from commit %s to commit %s\n", submodule, originalHash, newHash)
+			anyUpdated = true
+			updatedSubmodules = append(updatedSubmodules, submodule)
+		} else {
+			fmt.Printf("Submodule %s is already up to date at commit %s\n", submodule, newHash)
+		}
+	}
+
+	// Check main repository status after submodule updates
+	mainStatusAfterCmd := exec.Command("git", "status", "--porcelain")
+	mainStatusAfterCmd.Dir = repoPath
+	mainStatusAfterOutput, err := mainStatusAfterCmd.CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("failed to check main repository status after update: %w", err)
+	}
+
+	fmt.Printf("Main repository status after submodule updates:\n%s\n", string(mainStatusAfterOutput))
+
+	// Additional check: see if there are any changes in the working directory
+	hasChanges := len(strings.TrimSpace(string(mainStatusAfterOutput))) > 0
+	if hasChanges {
+		fmt.Printf("Git working directory has changes - indicating submodule pointers have been updated\n")
 		anyUpdated = true
 	}
 
-	// Check status of main repository after updates
-	mainStatusCmd := exec.Command("git", "status")
-	mainStatusCmd.Dir = repoPath
-	mainStatusOutput, err := mainStatusCmd.CombinedOutput()
-	if err != nil {
-		return false, fmt.Errorf("failed to check main repository status: %w", err)
+	if anyUpdated {
+		fmt.Printf("Summary: Updated %d submodules: %v\n", len(updatedSubmodules), updatedSubmodules)
+	} else {
+		fmt.Printf("No submodules were updated\n")
 	}
-
-	fmt.Printf("Main repository status after submodule updates:\n%s\n", string(mainStatusOutput))
 
 	return anyUpdated, nil
 }
@@ -203,7 +252,7 @@ func (m *Manager) updateSubmodules() error {
 	}
 
 	// Update submodules
-	updateCmd := exec.Command("git", "submodule", "update", "--recursive", "--remote")
+	updateCmd := exec.Command("git", "submodule", "update", "--recursive", "--remote", "--force")
 	updateCmd.Dir = repoPath
 
 	// Set environment variables for authentication if using SSH
@@ -263,6 +312,22 @@ func (m *Manager) commitSubmoduleChangesToMainRepo(branch string) error {
 
 	fmt.Printf("Changes detected in main repository:\n%s\n", statusOutput)
 
+	// Check if changes are related to submodules
+	submoduleChanges := false
+	lines := strings.Split(statusOutput, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, " M ") && !strings.Contains(line, ".") {
+			// This indicates a submodule change (modified directory without extension)
+			submoduleChanges = true
+			fmt.Printf("Detected submodule change: %s\n", line)
+		}
+	}
+
+	if !submoduleChanges {
+		fmt.Println("Changes detected but none appear to be submodule related")
+		// Still proceed with commit as there might be submodule pointer changes
+	}
+
 	// Get the list of modified submodules
 	submodules, err := m.listSubmodules()
 	if err != nil {
@@ -312,15 +377,51 @@ func (m *Manager) commitSubmoduleChangesToMainRepo(branch string) error {
 
 	// Push the changes if authentication is configured
 	if m.config.MainRepo.GetAuth().Type != "none" {
+		fmt.Printf("Attempting to push changes to remote repository on branch %s\n", branch)
+
+		// First, try to pull any remote changes to avoid conflicts
+		pullCmd := exec.Command("git", "pull", "--rebase", "origin", branch)
+		pullCmd.Dir = repoPath
+		m.setupCredentials(m.config.MainRepo, pullCmd)
+		if pullOutput, err := pullCmd.CombinedOutput(); err != nil {
+			fmt.Printf("Warning: Failed to pull before push: %v, output: %s\n", err, string(pullOutput))
+			// Continue with push attempt even if pull fails
+		} else {
+			fmt.Printf("Successfully pulled latest changes before push\n")
+		}
+
+		// Now push the changes
 		pushCmd := exec.Command("git", "push", "origin", branch)
 		pushCmd.Dir = repoPath
 		m.setupCredentials(m.config.MainRepo, pushCmd)
 
-		if output, err := pushCmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("git push failed: %w, output: %s", err, string(output))
+		pushOutput, err := pushCmd.CombinedOutput()
+		if err != nil {
+			fmt.Printf("First push attempt failed: %v, output: %s\n", err, string(pushOutput))
+
+			// Try force push if regular push fails (be careful with this)
+			fmt.Printf("Attempting force push (this may overwrite remote changes)\n")
+			forcePushCmd := exec.Command("git", "push", "--force-with-lease", "origin", branch)
+			forcePushCmd.Dir = repoPath
+			m.setupCredentials(m.config.MainRepo, forcePushCmd)
+
+			if forceOutput, forceErr := forcePushCmd.CombinedOutput(); forceErr != nil {
+				return fmt.Errorf("git push failed even with force: %w, output: %s", forceErr, string(forceOutput))
+			} else {
+				fmt.Printf("Successfully force-pushed submodule changes to remote repository on branch %s\n", branch)
+			}
+		} else {
+			fmt.Printf("Successfully pushed submodule changes to remote repository on branch %s\n", branch)
 		}
 
-		fmt.Printf("Pushed submodule changes to remote repository on branch %s\n", branch)
+		// Verify the push was successful by checking remote status
+		verifyCmd := exec.Command("git", "status", "-v")
+		verifyCmd.Dir = repoPath
+		if verifyOutput, err := verifyCmd.CombinedOutput(); err == nil {
+			fmt.Printf("Post-push repository status:\n%s\n", string(verifyOutput))
+		}
+	} else {
+		fmt.Printf("No authentication configured - skipping push to remote repository\n")
 	}
 
 	return nil

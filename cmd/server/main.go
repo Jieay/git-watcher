@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -171,7 +172,29 @@ func main() {
 			return
 		}
 
-		log.Printf("Received webhook trigger: %s, branch: %s", payload.Event, payload.Branch)
+		// 打印接收到的所有字段信息
+		log.Printf("=== Webhook Trigger Received ===")
+		log.Printf("Event: %s", payload.Event)
+		log.Printf("Branch: %s", payload.Branch)
+		log.Printf("Reference: %s", payload.Reference)
+		log.Printf("Ref: %s", payload.Ref)
+		log.Printf("===============================")
+
+		logMsg := "Received webhook trigger -"
+		logMsg += fmt.Sprintf(" Event: %s,", payload.Event)
+
+		if payload.Branch != "" {
+			logMsg += fmt.Sprintf(" Branch: %s,", payload.Branch)
+		}
+		if payload.Reference != "" {
+			logMsg += fmt.Sprintf(" Reference: %s,", payload.Reference)
+		}
+		if payload.Ref != "" {
+			logMsg += fmt.Sprintf(" Ref: %s,", payload.Ref)
+		}
+		// Trim trailing comma if exists
+		logMsg = strings.TrimSuffix(logMsg, ",")
+		log.Print(logMsg)
 
 		// If a specific branch is provided, check only that branch
 		if payload.Branch != "" {

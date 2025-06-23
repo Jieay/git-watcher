@@ -271,7 +271,8 @@ X-Webhook-Signature: 2a55955309a33633b5d67ae35f8669d77cddf078e9b28bb632357468be0
 {
   "event": "push",
   "branch": "main",       // 可选，指定要检查的分支
-  "reference": "refs/heads/develop"  // 可选，Git引用，会自动提取分支名
+  "reference": "refs/heads/develop",  // 可选，Git引用，会自动提取分支名
+  "ref": "refs/heads/test"  // 可选，Git引用，会自动提取分支名
 }
 ```
 
@@ -280,11 +281,14 @@ X-Webhook-Signature: 2a55955309a33633b5d67ae35f8669d77cddf078e9b28bb632357468be0
 - `event`: 事件类型，任意字符串，用于日志记录
 - `branch`: 要检查的分支名称，如果提供此参数，将只检查该分支
 - `reference`: Git引用格式，如 "refs/heads/develop"，系统会自动提取分支名
+- `ref`: Git引用格式，如 "refs/heads/test"，系统会自动提取分支名（与reference功能相同）
 
 #### 行为说明
 
 - 如果请求中包含 `branch` 参数，则只检查指定的分支
 - 如果请求中包含 `reference` 参数（如 GitHub webhook 的格式），会自动提取分支名
+- 如果请求中包含 `ref` 参数，会自动提取分支名
+- 参数优先级：`branch` > `reference` > `ref`
 - 如果未指定分支，则检查所有配置的分支
 
 #### 签名验证
@@ -313,6 +317,14 @@ curl -X POST http://localhost:8080/webhook/trigger \
 curl -X POST http://localhost:8080/webhook/trigger \
   -H "Content-Type: application/json" \
   -d '{"event":"push","reference":"refs/heads/develop"}'
+```
+
+**使用新的 ref 参数**
+
+```bash
+curl -X POST http://localhost:8080/webhook/trigger \
+  -H "Content-Type: application/json" \
+  -d '{"event":"push","ref":"refs/heads/test"}'
 ```
 
 3. **带签名验证的请求**
